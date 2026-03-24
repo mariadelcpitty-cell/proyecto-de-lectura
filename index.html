@@ -5,8 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Proyecto Institucional de Lectura</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Conexión a Firebase (Nube) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <script>
+        // Configuración Oficial de Firebase El Silencio
+        const firebaseConfig = {
+            apiKey: "AIzaSyC7pYep5jw9LQW0Ud5fhkciFEPrymnWRJM",
+            authDomain: "app-asistencia-74418.firebaseapp.com",
+            projectId: "app-asistencia-74418",
+            storageBucket: "app-asistencia-74418.firebasestorage.app",
+            messagingSenderId: "277294975250",
+            appId: "1:277294975250:web:0343788e7322cbfe5f8bcb",
+            measurementId: "G-ZNECYLK21M"
+        };
+        // Inicializar la Nube
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
         tailwind.config = {
             theme: {
                 extend: {
@@ -27,24 +44,588 @@
             }
         }
 
-        // Función para cambiar de pestañas principales (Proyecto / Programa)
+        // Función para cambiar de pestañas principales
         function openTab(tabName) {
-            document.getElementById('tab-proyecto').classList.add('hidden');
-            document.getElementById('tab-programa').classList.add('hidden');
-            document.getElementById('tab-banco').classList.add('hidden');
+            const tabs = ['proyecto', 'estadistica', 'programa', 'banco'];
             
-            document.getElementById('btn-proyecto').classList.remove('border-blue-500', 'text-institucional-800', 'bg-white');
-            document.getElementById('btn-proyecto').classList.add('border-transparent', 'text-gray-500', 'hover:text-institucional-800', 'hover:border-gray-300');
-            
-            document.getElementById('btn-programa').classList.remove('border-blue-500', 'text-institucional-800', 'bg-white');
-            document.getElementById('btn-programa').classList.add('border-transparent', 'text-gray-500', 'hover:text-institucional-800', 'hover:border-gray-300');
-
-            document.getElementById('btn-banco').classList.remove('border-blue-500', 'text-institucional-800', 'bg-white');
-            document.getElementById('btn-banco').classList.add('border-transparent', 'text-gray-500', 'hover:text-institucional-800', 'hover:border-gray-300');
+            tabs.forEach(tab => {
+                const elTab = document.getElementById('tab-' + tab);
+                const elBtn = document.getElementById('btn-' + tab);
+                
+                if (elTab && elBtn) {
+                    elTab.classList.add('hidden');
+                    elBtn.classList.remove('border-blue-500', 'text-institucional-800', 'bg-white');
+                    elBtn.classList.add('border-transparent', 'text-gray-500', 'hover:text-institucional-800', 'hover:border-gray-300');
+                }
+            });
 
             document.getElementById('tab-' + tabName).classList.remove('hidden');
             document.getElementById('btn-' + tabName).classList.remove('border-transparent', 'text-gray-500', 'hover:text-institucional-800', 'hover:border-gray-300');
             document.getElementById('btn-' + tabName).classList.add('border-blue-500', 'text-institucional-800', 'bg-white');
+        }
+
+        // ==========================================
+        // LÓGICA DE ESTADÍSTICAS, ROLES Y AUDITORÍA
+        // ==========================================
+        let semaforoChart = null;
+
+        // ==========================================
+        // FUNCIONES DE PINES Y BLOQUEOS
+        // ==========================================
+        function generarPinesMaestros() {
+            const grados = ["Kinder", "1° Grado", "2° Grado", "3° Grado", "4° Grado", "5° Grado", "6° Grado"];
+            const grupos = ["A", "B", "C"];
+            let html = "<h5 class='font-bold text-yellow-300 mb-2'>Llaves de Acceso - Maestros de Grado:</h5><ul class='text-xs space-y-1 mb-4'>";
+            grados.forEach(gr => {
+                grupos.forEach(gp => {
+                    let prefix = gr.substring(0,3).toUpperCase().replace('°','');
+                    html += `<li>${gr} Grupo ${gp}: <strong>${prefix}-${gp}-2026</strong></li>`;
+                });
+            });
+            html += "</ul>";
+            const caja = document.getElementById('resultado-auditoria');
+            caja.innerHTML = html;
+            caja.classList.remove('hidden');
+        }
+
+        function generarPinesEspeciales() {
+            let html = "<h5 class='font-bold text-fuchsia-300 mb-2'>Llaves de Acceso - Docentes Especiales (Solo Lectura):</h5><ul class='text-xs space-y-1 mb-4'>";
+            html += `<li>Docente Especial 1: <strong>ESP-001-2026</strong></li>`;
+            html += `<li>Docente Especial 2: <strong>ESP-002-2026</strong></li>`;
+            html += `<li>Docente Especial 3: <strong>ESP-003-2026</strong></li>`;
+            html += `<li>Docente Especial 4: <strong>ESP-004-2026</strong></li>`;
+            html += `<li>Docente Especial 5: <strong>ESP-005-2026</strong></li>`;
+            html += "</ul><p class='text-xs text-gray-400 mt-2'>* Estos pines bloquean la edición de datos automáticamente.</p>";
+            const caja = document.getElementById('resultado-auditoria');
+            caja.innerHTML = html;
+            caja.classList.remove('hidden');
+        }
+
+        function verificarRolPin() {
+            const pinInput = document.getElementById('input-pin');
+            const pin = pinInput ? pinInput.value.trim() : "";
+            const gr = document.getElementById('select-grado').value;
+            const gp = document.getElementById('select-grupo').value;
+            
+            const isEspecial = pin.toUpperCase().startsWith("ESP-");
+            const inputs = ['input-verde', 'input-amarillo', 'input-rojo'];
+            const btnGuardar = document.getElementById('btn-guardar');
+            const btnCargar = document.getElementById('btn-cargar');
+            const panelDirectora = document.getElementById('panel-directora');
+
+            // Ocultar panel de dirección automáticamente al ingresar cualquier pin que no sea de director
+            if (pin !== "" && pin !== "DIR-2026") {
+                if (panelDirectora) {
+                    panelDirectora.classList.add('hidden');
+                }
+            }
+            
+            let pinCorrecto = false;
+            if (gr !== "Todos" && gp !== "Consolidado") {
+                let prefix = gr.substring(0,3).toUpperCase().replace('°','');
+                let expectedPin = `${prefix}-${gp}-2026`;
+                if (pin === expectedPin) {
+                    pinCorrecto = true;
+                }
+            }
+
+            if (isEspecial || !pinCorrecto || gp === "Consolidado") {
+                inputs.forEach(id => {
+                    let el = document.getElementById(id);
+                    if(el) {
+                        el.disabled = true;
+                        el.classList.add('bg-gray-200', 'cursor-not-allowed', 'opacity-50');
+                    }
+                });
+                if(btnGuardar) {
+                    btnGuardar.disabled = true;
+                    btnGuardar.classList.add('opacity-50', 'cursor-not-allowed');
+                    btnGuardar.innerText = isEspecial ? "🚫 Solo Lectura" : "🚫 PIN Inválido para Grupo";
+                }
+            } else {
+                inputs.forEach(id => {
+                    let el = document.getElementById(id);
+                    if(el) {
+                        el.disabled = false;
+                        el.classList.remove('bg-gray-200', 'cursor-not-allowed', 'opacity-50');
+                    }
+                });
+                if(btnGuardar) {
+                    btnGuardar.disabled = false;
+                    btnGuardar.classList.remove('opacity-50', 'cursor-not-allowed');
+                    btnGuardar.innerText = "💾 Guardar Datos";
+                }
+            }
+
+            // Bloquear botón "Cargar Mis Datos" para maestros especiales
+            if (btnCargar) {
+                if (isEspecial) {
+                    btnCargar.disabled = true;
+                    btnCargar.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    btnCargar.disabled = false;
+                    btnCargar.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        }
+
+        // 1. DOCENTES: Cargar Datos Previos
+        async function cargarMisDatos() {
+            const t = document.getElementById('select-trimestre').value;
+            const gr = document.getElementById('select-grado').value;
+            const gp = document.getElementById('select-grupo').value;
+            const pin = document.getElementById('input-pin').value;
+
+            if (gp === "Consolidado") {
+                alert("Para ver el consolidado de la escuela, usa el botón 'Generar Gráfica'."); return;
+            }
+            if (!pin) { alert("⚠️ Coloque su Firma/PIN personal para consultar sus datos en la nube."); return; }
+            
+            const isEspecial = pin.toUpperCase().startsWith("ESP-");
+            const docId = `${t}_${gr}_${gp}`.replace(/\s+/g, '_');
+            
+            try {
+                const doc = await db.collection("estadisticas").doc(docId).get();
+                if (doc.exists) {
+                    // Si es especial, salta el bloqueo de PIN y le permite ver la gráfica
+                    if (!isEspecial && doc.data().pin_docente !== pin) {
+                        alert("⚠️ PIN Incorrecto. Su PIN no coincide con el docente que registró este salón."); return;
+                    }
+                    document.getElementById('input-verde').value = doc.data().verde;
+                    document.getElementById('input-amarillo').value = doc.data().amarillo;
+                    document.getElementById('input-rojo').value = doc.data().rojo;
+                    
+                    await db.collection("auditoria").add({
+                        trimestre: t, grado: gr, grupo: gp, accion: isEspecial ? "Especial Consultó Gráfica" : "Consultó sus datos", fecha: new Date().toLocaleString()
+                    });
+                    
+                    dibujarDashboard(`${gr} Grupo ${gp} | ${t}`, doc.data().verde, doc.data().amarillo, doc.data().rojo);
+                    
+                    if(!isEspecial) {
+                        alert("📥 Datos cargados exitosamente. Puede modificarlos y presionar 'Guardar Datos'.");
+                    }
+                } else {
+                    alert("Aún no se han ingresado datos para este periodo en este salón.");
+                }
+            } catch (e) { alert("Error de conexión con la nube."); console.error(e); }
+        }
+
+        // 2. DOCENTES: Guardar Nuevos Datos
+        async function guardarDatos() {
+            const t = document.getElementById('select-trimestre').value;
+            const gr = document.getElementById('select-grado').value;
+            const gp = document.getElementById('select-grupo').value;
+            const pin = document.getElementById('input-pin').value;
+            const isEspecial = pin.toUpperCase().startsWith("ESP-");
+
+            if (gp === "Consolidado" || isEspecial) {
+                alert("⚠️ Acción Denegada."); return;
+            }
+
+            const v = parseInt(document.getElementById('input-verde').value) || 0;
+            const a = parseInt(document.getElementById('input-amarillo').value) || 0;
+            const r = parseInt(document.getElementById('input-rojo').value) || 0;
+
+            if (!pin) { alert("⚠️ Su PIN es obligatorio para autorizar el guardado."); return; }
+            if (v+a+r === 0) { alert("Debe ingresar la cantidad de estudiantes evaluados."); return; }
+
+            const docId = `${t}_${gr}_${gp}`.replace(/\s+/g, '_');
+            try {
+                const check = await db.collection("estadisticas").doc(docId).get();
+                if (check.exists && check.data().pin_docente !== pin) {
+                    alert("⚠️ PIN Incorrecto. Este salón fue registrado previamente por otro docente. No puede modificarlo."); return;
+                }
+
+                await db.collection("estadisticas").doc(docId).set({
+                    trimestre: t, grado: gr, grupo: gp, verde: v, amarillo: a, rojo: r, total: (v+a+r), pin_docente: pin,
+                    ultima_actualizacion: new Date().toLocaleString()
+                });
+
+                await db.collection("auditoria").add({
+                    trimestre: t, grado: gr, grupo: gp, accion: "Registró/Modificó datos", fecha: new Date().toLocaleString()
+                });
+
+                alert("✅ ¡Datos guardados correctamente en la Base de Datos!");
+            } catch (e) { alert("Error al guardar en la nube."); console.error(e); }
+        }
+
+        // 2.1. GENERAR GRÁFICA (Pública y Docentes)
+        async function generarGrafica() {
+            const t = document.getElementById('select-trimestre').value;
+            const gr = document.getElementById('select-grado').value;
+            const gp = document.getElementById('select-grupo').value;
+            
+            if (gp === "Consolidado") {
+                try {
+                    let totalVerde = 0; let totalAmarillo = 0; let totalRojo = 0;
+                    let query = db.collection("estadisticas").where("trimestre", "==", t);
+                    if (gr !== "Todos") { query = query.where("grado", "==", gr); }
+                    
+                    const snapshot = await query.get();
+                    snapshot.forEach(doc => {
+                        totalVerde += doc.data().verde || 0;
+                        totalAmarillo += doc.data().amarillo || 0;
+                        totalRojo += doc.data().rojo || 0;
+                    });
+                    
+                    if ((totalVerde + totalAmarillo + totalRojo) === 0) {
+                        alert("Aún no hay datos de los docentes para mostrar un consolidado en este trimestre."); return;
+                    }
+                    dibujarDashboard((gr === "Todos" ? "TOTAL ESCUELA" : gr + " (CONSOLIDADO)") + " | " + t, totalVerde, totalAmarillo, totalRojo);
+                } catch (error) { alert("Error al consultar consolidados."); }
+                return;
+            }
+
+            const docId = `${t}_${gr}_${gp}`.replace(/\s+/g, '_');
+            try {
+                const doc = await db.collection("estadisticas").doc(docId).get();
+                if (doc.exists) {
+                    dibujarDashboard(`${gr} Grupo ${gp} | ${t}`, doc.data().verde, doc.data().amarillo, doc.data().rojo);
+                } else {
+                    const v = parseInt(document.getElementById('input-verde').value) || 0;
+                    const a = parseInt(document.getElementById('input-amarillo').value) || 0;
+                    const r = parseInt(document.getElementById('input-rojo').value) || 0;
+                    if(v+a+r > 0) {
+                        dibujarDashboard(`${gr} Grupo ${gp} | ${t} (No guardado)`, v, a, r);
+                    } else {
+                        alert("Aún no se han ingresado datos para este periodo en este salón.");
+                    }
+                }
+            } catch (e) { alert("Error de conexión con la nube."); console.error(e); }
+        }
+
+        // 3. DIRECCIÓN: Mostrar Consola Secreta
+        function togglePanelDirectora() {
+            const pin = prompt("Ingrese el PIN de Dirección (Llave Maestra):");
+            if (pin === "DIR-2026") {
+                document.getElementById('panel-directora').classList.remove('hidden');
+                document.getElementById('dashboard-resultados').classList.add('hidden');
+            } else {
+                alert("❌ Acceso Denegado.");
+            }
+        }
+
+        // 4. DIRECCIÓN: Generar Consolidados
+        async function generarGraficaDirectiva() {
+            const t = document.getElementById('select-trimestre').value;
+            const nivel = document.getElementById('dir-nivel').value;
+            const gr = document.getElementById('dir-grado').value;
+            const gp = document.getElementById('dir-grupo').value;
+            
+            let v=0, a=0, r=0; let titulo = ""; let query = db.collection("estadisticas").where("trimestre", "==", t);
+
+            try {
+                if (nivel === "Escuela") {
+                    titulo = `TOTAL ESCUELA | ${t}`;
+                } else if (nivel === "Grado") {
+                    query = query.where("grado", "==", gr);
+                    titulo = `${gr} (TODOS LOS GRUPOS) | ${t}`;
+                } else if (nivel === "Grupo") {
+                    query = query.where("grado", "==", gr).where("grupo", "==", gp);
+                    titulo = `${gr} Grupo ${gp} | ${t}`;
+                }
+
+                const snapshot = await query.get();
+                snapshot.forEach(doc => { v += doc.data().verde; a += doc.data().amarillo; r += doc.data().rojo; });
+                
+                if(v+a+r === 0) { alert("Aún no hay datos reportados por los maestros para esta selección."); return; }
+                
+                dibujarDashboard(titulo, v, a, r);
+            } catch (e) { alert("Error al generar el consolidado de la nube."); console.error(e); }
+        }
+
+        // 5. DIRECCIÓN: Ver Auditoría
+        async function verAuditoria() {
+            const t = document.getElementById('select-trimestre').value;
+            const caja = document.getElementById('resultado-auditoria');
+            caja.classList.remove('hidden');
+            caja.innerHTML = `Analizando movimientos en la nube para el ${t}...<br><br>`;
+            
+            try {
+                const snapshot = await db.collection("auditoria").where("trimestre", "==", t).orderBy("fecha", "desc").get();
+                if(snapshot.empty) { caja.innerHTML += "No hay movimientos registrados."; return; }
+                
+                caja.innerHTML = `<strong>MOVIMIENTOS DE DOCENTES (${t}):</strong><br><br>`;
+                snapshot.forEach(doc => {
+                    const d = doc.data();
+                    caja.innerHTML += `[${d.fecha}] <strong>${d.grado} Grupo ${d.grupo}</strong> -> ${d.accion}<br>`;
+                });
+            } catch (e) { caja.innerHTML = "Error al leer la base de datos de Auditoría."; console.error(e); }
+        }
+
+        // 5.1 DIRECCIÓN: Borrar Base de Datos (Práctica)
+        async function borrarBaseDatos() {
+            const pin = prompt("⚠️ ATENCIÓN: Esta acción borrará TODOS los datos de estadísticas y auditoría.\n\nPara confirmar, ingrese el PIN de Dirección (Llave Maestra):");
+            if (pin !== "DIR-2026") {
+                if (pin !== null) alert("❌ PIN incorrecto. Acción cancelada.");
+                return;
+            }
+            
+            const confirmar = confirm("¿Está absolutamente seguro de que desea eliminar todos los datos de práctica?");
+            if (!confirmar) return;
+
+            try {
+                const stats = await db.collection("estadisticas").get();
+                const batchStats = db.batch();
+                stats.docs.forEach(doc => batchStats.delete(doc.ref));
+                await batchStats.commit();
+
+                const audit = await db.collection("auditoria").get();
+                const batchAudit = db.batch();
+                audit.docs.forEach(doc => batchAudit.delete(doc.ref));
+                await batchAudit.commit();
+
+                alert("✅ Base de datos limpiada correctamente. Todos los registros han sido borrados.");
+                document.getElementById('dashboard-resultados').classList.add('hidden');
+            } catch (e) {
+                alert("Error al borrar la base de datos. Verifique su conexión.");
+                console.error(e);
+            }
+        }
+
+        // 6. MOTOR GRÁFICO Y NEURODIDÁCTICO
+        function dibujarDashboard(titulo, v, a, r) {
+            const total = v + a + r;
+            document.getElementById('reporte-grado').innerText = titulo;
+            document.getElementById('reporte-total').innerText = total;
+            document.getElementById('reporte-verde').innerText = v;
+            document.getElementById('reporte-amarillo').innerText = a;
+            document.getElementById('reporte-rojo').innerText = r;
+
+            const pRojo = (r/total)*100; const pVerde = (v/total)*100;
+            let reco = "", cClase = "";
+
+            if (pRojo >= 40) { 
+                reco = "⚠️ ALERTA PEDAGÓGICA: Más del 40% en Nivel Rojo. Requiere intervención inmediata con método fonológico."; 
+                cClase = "text-red-700 bg-red-100 border-red-300"; 
+            } else if (pVerde >= 60) { 
+                reco = "🌟 EXCELENTE: Grupo consolidado. Elevar nivel a comprensión inferencial y crítica."; 
+                cClase = "text-green-700 bg-green-100 border-green-300"; 
+            } else { 
+                reco = "📈 EN PROCESO: Desarrollo regular. Brindar apoyo focalizado al nivel amarillo para consolidar fluidez."; 
+                cClase = "text-yellow-700 bg-yellow-100 border-yellow-300"; 
+            }
+
+            let recoDiv = document.getElementById('box-recomendacion');
+            if (!recoDiv) { 
+                recoDiv = document.createElement('div'); 
+                recoDiv.id = 'box-recomendacion'; 
+                document.getElementById('area-impresion-reporte').appendChild(recoDiv); 
+            }
+            recoDiv.className = `p-4 mt-8 rounded-lg border-2 font-bold text-center text-sm md:text-base ${cClase}`;
+            recoDiv.innerText = reco;
+
+            document.getElementById('dashboard-resultados').classList.remove('hidden');
+
+            const ctx = document.getElementById('chartSemaforo').getContext('2d');
+            if (semaforoChart) semaforoChart.destroy();
+            semaforoChart = new Chart(ctx, {
+                type: 'doughnut', 
+                data: { labels: ['Verde', 'Amarillo', 'Rojo'], datasets: [{ data: [v, a, r], backgroundColor: ['#22c55e', '#facc15', '#ef4444'], borderWidth: 2, borderColor: '#fff' }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+
+            // Llamamos a la nueva función que grafica el histórico
+            generarHistorico();
+            document.getElementById('dashboard-resultados').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // ==========================================
+        // NUEVA FUNCIÓN: PROGRESIÓN HISTÓRICA
+        // ==========================================
+        let chartsHistorico = [];
+        async function generarHistorico() {
+            const contenedorHistorico = document.getElementById('historico-progresion');
+            if(!contenedorHistorico) return;
+            
+            const gr = document.getElementById('select-grado').value;
+            const gp = document.getElementById('select-grupo').value;
+            
+            contenedorHistorico.classList.remove('hidden');
+            
+            const trimestres = ["Diagnóstico Inicial", "Cierre 1er Trimestre", "Cierre 2do Trimestre", "Cierre 3er Trimestre"];
+            const canvasIds = ['chartProgInicial', 'chartProgT1', 'chartProgT2', 'chartProgT3'];
+            const textIds = ['textProgInicial', 'textProgT1', 'textProgT2', 'textProgT3'];
+            
+            // Limpiar gráficas anteriores para evitar sobreposición en Chart.js
+            chartsHistorico.forEach(c => { if(c) c.destroy(); });
+            chartsHistorico = [];
+
+            for (let i = 0; i < 4; i++) {
+                const t = trimestres[i];
+                const canvasId = canvasIds[i];
+                const textId = textIds[i];
+                
+                let v = 0, a = 0, r = 0;
+                
+                // Consultar en la nube el estado específico de cada periodo
+                if (gp === "Consolidado") {
+                    try {
+                        let query = db.collection("estadisticas").where("trimestre", "==", t);
+                        if (gr !== "Todos") { query = query.where("grado", "==", gr); }
+                        const snapshot = await query.get();
+                        snapshot.forEach(doc => {
+                            v += doc.data().verde || 0;
+                            a += doc.data().amarillo || 0;
+                            r += doc.data().rojo || 0;
+                        });
+                    } catch (e) { console.error(e); }
+                } else {
+                    const docId = `${t}_${gr}_${gp}`.replace(/\s+/g, '_');
+                    try {
+                        const doc = await db.collection("estadisticas").doc(docId).get();
+                        if (doc.exists) {
+                            v = doc.data().verde || 0;
+                            a = doc.data().amarillo || 0;
+                            r = doc.data().rojo || 0;
+                        }
+                    } catch (e) { console.error(e); }
+                }
+
+                const total = v + a + r;
+                const txtEl = document.getElementById(textId);
+                const ctxHist = document.getElementById(canvasId).getContext('2d');
+                
+                if (total > 0) {
+                    txtEl.innerText = `Evaluados: ${total}`;
+                    txtEl.className = "text-xs mt-2 font-bold text-blue-600";
+                    
+                    const newChart = new Chart(ctxHist, {
+                        type: 'doughnut',
+                        data: { 
+                            labels: ['Verde', 'Amarillo', 'Rojo'], 
+                            datasets: [{ 
+                                data: [v, a, r], 
+                                backgroundColor: ['#22c55e', '#facc15', '#ef4444'], 
+                                borderWidth: 0 
+                            }] 
+                        },
+                        options: { 
+                            responsive: true, 
+                            maintainAspectRatio: false, 
+                            plugins: { legend: { display: false }, tooltip: { enabled: true } },
+                            cutout: '70%'
+                        }
+                    });
+                    chartsHistorico.push(newChart);
+                } else {
+                    txtEl.innerText = "Sin datos";
+                    txtEl.className = "text-xs mt-2 font-semibold text-gray-400";
+                    
+                    // Si no hay datos, pinta un anillo gris vacío
+                    const newChart = new Chart(ctxHist, {
+                        type: 'doughnut',
+                        data: { labels: ['Sin Datos'], datasets: [{ data: [1], backgroundColor: ['#f3f4f6'], borderWidth: 0 }] },
+                        options: { 
+                            responsive: true, 
+                            maintainAspectRatio: false, 
+                            plugins: { legend: { display: false }, tooltip: { enabled: false } }, 
+                            cutout: '70%', 
+                            animation: false 
+                        }
+                    });
+                    chartsHistorico.push(newChart);
+                }
+            }
+        }
+
+        // 7. IMPRIMIR INSTRUMENTOS DE EVALUACIÓN
+        function imprimirInstrumento(nivel) {
+            const printWindow = window.open('', '_blank');
+            let titulo = "", contenido = "";
+            
+            if (nivel === 1) {
+                titulo = "Lista de Cotejo Fonológica y Decodificación (Kinder - 1°)";
+                contenido = `
+                    <table border="1" cellspacing="0" cellpadding="8" style="width:100%; border-collapse: collapse; margin-top:20px; font-size:14px;">
+                        <tr style="background:#f1f5f9;"><th>Indicador de Logro</th><th>Logrado (Verde)</th><th>En Proceso (Amarillo)</th><th>No Logrado (Rojo)</th></tr>
+                        <tr><td>Reconoce el sonido inicial de las palabras.</td><td></td><td></td><td></td></tr>
+                        <tr><td>Asocia la grafía con el fonema (letra-sonido).</td><td></td><td></td><td></td></tr>
+                        <tr><td>Lee sílabas simples (directas).</td><td></td><td></td><td></td></tr>
+                        <tr><td>Lee palabras cortas de uso frecuente.</td><td></td><td></td><td></td></tr>
+                        <tr><td>Comprende el significado de la palabra leída.</td><td></td><td></td><td></td></tr>
+                    </table>`;
+            } else if (nivel === 2) {
+                titulo = "Registro de Fluidez y Comprensión Literal (2° - 3°)";
+                contenido = `
+                    <table border="1" cellspacing="0" cellpadding="8" style="width:100%; border-collapse: collapse; margin-top:20px; font-size:14px;">
+                        <tr style="background:#f1f5f9;"><th>Indicador de Logro</th><th>Logrado (Verde)</th><th>En Proceso (Amarillo)</th><th>No Logrado (Rojo)</th></tr>
+                        <tr><td>Lee con un volumen y ritmo adecuado para su edad.</td><td></td><td></td><td></td></tr>
+                        <tr><td>Reconoce palabras sin silabear constantemente.</td><td></td><td></td><td></td></tr>
+                        <tr><td>Responde preguntas literales: ¿Qué pasó?</td><td></td><td></td><td></td></tr>
+                        <tr><td>Identifica a los personajes principales (¿Quién?).</td><td></td><td></td><td></td></tr>
+                        <tr><td>Localiza el escenario de la historia (¿Dónde?).</td><td></td><td></td><td></td></tr>
+                    </table>`;
+            } else {
+                titulo = "Rúbrica de Comprensión Inferencial y Prosodia (4° - 6°)";
+                contenido = `
+                    <table border="1" cellspacing="0" cellpadding="8" style="width:100%; border-collapse: collapse; margin-top:20px; font-size:14px;">
+                        <tr style="background:#f1f5f9;"><th>Indicador de Logro</th><th>Logrado (Verde)</th><th>En Proceso (Amarillo)</th><th>No Logrado (Rojo)</th></tr>
+                        <tr><td>Lee con fluidez, respetando pausas (comas, puntos).</td><td></td><td></td><td></td></tr>
+                        <tr><td>Utiliza la entonación adecuada según el texto.</td><td></td><td></td><td></td></tr>
+                        <tr><td>Realiza inferencias (deduce lo que no está escrito).</td><td></td><td></td><td></td></tr>
+                        <tr><td>Emite opiniones críticas sobre las decisiones del personaje.</td><td></td><td></td><td></td></tr>
+                        <tr><td>Relaciona el mensaje del texto con la vida diaria.</td><td></td><td></td><td></td></tr>
+                    </table>`;
+            }
+
+            printWindow.document.write(`
+                <html><head><title>Imprimir Instrumento</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 40px; color: #333; }
+                    h2 { text-align: center; color: #102a43; margin-bottom: 5px; } h3 { text-align: center; color: #627d98; margin-top: 0; margin-bottom: 30px; }
+                    .firma { margin-top: 50px; display: flex; justify-content: space-around; }
+                    .linea { border-top: 1px solid #000; width: 200px; text-align: center; padding-top: 5px; }
+                </style></head>
+                <body>
+                    <h2>ESCUELA BILINGÜE EL SILENCIO</h2><h3>${titulo}</h3>
+                    <p><strong>Docente:</strong> ________________________ &nbsp;&nbsp;&nbsp; <strong>Grado y Grupo:</strong> ______ </p>
+                    <p><strong>Estudiante:</strong> _________________________________________ <strong>Fecha:</strong> ______________</p>
+                    ${contenido}
+                    <div class="firma"><div class="linea">Firma del Docente</div><div class="linea">Firma Acudiente</div></div>
+                </body></html>
+            `);
+            printWindow.document.close(); printWindow.focus();
+            setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
+        }
+
+        // 8. IMPRIMIR REPORTE ESTADÍSTICO
+        function imprimirReporte() {
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <html><head><title>Reporte Semáforo Lector</title><style>
+                body { font-family: 'Open Sans', Arial, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+                h2 { text-align: center; color: #102a43; margin-bottom: 5px; font-size: 24px;}
+                h3 { text-align: center; color: #627d98; margin-top: 0; font-weight: normal; font-size: 18px;}
+                hr { border: 1px solid #e2e8f0; margin-bottom: 40px; }
+                .grid-data { display: flex; justify-content: space-between; margin-top: 40px; gap: 15px;}
+                .box { padding: 20px; border-radius: 8px; width: 23%; text-align: center; border: 2px solid #e2e8f0; }
+                .box-total { background-color: #f8fafc; } .box-verde { background-color: #f0fdf4; border-color: #bbf7d0; }
+                .box-amarillo { background-color: #fefce8; border-color: #fef08a; } .box-rojo { background-color: #fef2f2; border-color: #fecaca; }
+                .val { font-size: 32px; font-weight: bold; display: block; margin-top: 10px; }
+                .chart-img { text-align: center; margin-top: 40px; } .chart-img img { max-width: 350px; margin: 0 auto;}
+                .reco { margin-top: 30px; padding: 15px; border: 2px dashed #94a3b8; text-align: center; font-weight: bold; }
+                </style></head><body>
+                <h2>ESCUELA BILINGÜE EL SILENCIO</h2>
+                <h3>Reporte Oficial: Semáforo Lector - ` + document.getElementById('reporte-grado').innerText + `</h3><hr>
+                <div class="grid-data">
+                    <div class="box box-total"><strong>Total Evaluados</strong><span class="val">` + document.getElementById('reporte-total').innerText + `</span></div>
+                    <div class="box box-verde"><strong>Verde</strong><span class="val" style="color:#16a34a;">` + document.getElementById('reporte-verde').innerText + `</span></div>
+                    <div class="box box-amarillo"><strong>Amarillo</strong><span class="val" style="color:#ca8a04;">` + document.getElementById('reporte-amarillo').innerText + `</span></div>
+                    <div class="box box-rojo"><strong>Rojo</strong><span class="val" style="color:#dc2626;">` + document.getElementById('reporte-rojo').innerText + `</span></div>
+                </div>
+                <div class="reco">` + (document.getElementById('box-recomendacion') ? document.getElementById('box-recomendacion').innerText : "") + `</div>
+                </body></html>
+            `);
+            const canvas = document.getElementById('chartSemaforo');
+            if (canvas) {
+                const imgData = canvas.toDataURL('image/png');
+                const chartDiv = printWindow.document.createElement('div');
+                chartDiv.className = 'chart-img'; chartDiv.innerHTML = '<img src="' + imgData + '" />';
+                printWindow.document.body.appendChild(chartDiv);
+            }
+            printWindow.document.close(); printWindow.focus();
+            setTimeout(() => { printWindow.print(); printWindow.close(); }, 800);
         }
 
         // Función para cambiar de Trimestre
@@ -160,11 +741,14 @@
             <button onclick="openTab('proyecto')" id="btn-proyecto" class="py-3 px-6 text-sm md:text-base font-bold text-institucional-800 border-b-4 border-blue-500 bg-white rounded-t-lg focus:outline-none transition-colors duration-200">
                 1. Proyecto Institucional
             </button>
+            <button onclick="openTab('estadistica')" id="btn-estadistica" class="py-3 px-6 text-sm md:text-base font-semibold text-gray-500 border-b-4 border-transparent hover:text-institucional-800 hover:border-gray-300 focus:outline-none transition-colors duration-200">
+                2. Estadísticas
+            </button>
             <button onclick="openTab('programa')" id="btn-programa" class="py-3 px-6 text-sm md:text-base font-semibold text-gray-500 border-b-4 border-transparent hover:text-institucional-800 hover:border-gray-300 focus:outline-none transition-colors duration-200">
-                2. Programa de Sesiones (Anexo)
+                3. Programa de Sesiones (Anexo)
             </button>
             <button onclick="openTab('banco')" id="btn-banco" class="py-3 px-6 text-sm md:text-base font-semibold text-gray-500 border-b-4 border-transparent hover:text-institucional-800 hover:border-gray-300 focus:outline-none transition-colors duration-200">
-                3. Banco de Lecturas
+                4. Banco de Lecturas
             </button>
         </div>
     </div>
@@ -733,7 +1317,292 @@
         </div>
 
         <!-- ========================================== -->
-        <!-- PESTAÑA 2: PROGRAMA DE SESIONES (ANEXO) -->
+        <!-- PESTAÑA 2: ESTADÍSTICAS (NUEVO) -->
+        <!-- ========================================== -->
+        <div id="tab-estadistica" class="hidden animate-fade-in">
+            
+            <div class="text-center mb-10 mt-4">
+                <h2 class="text-3xl font-serif font-bold text-institucional-900">PANEL ESTADÍSTICO: SEMÁFORO LECTOR</h2>
+                <p class="text-gray-600 mt-3 max-w-2xl mx-auto">Herramienta de registro y evaluación continua para medir el progreso de la fluidez y comprensión lectora de los estudiantes, según las competencias de cada grado.</p>
+            </div>
+
+            <!-- Instrumentos de Evaluación (Guía Docente) -->
+            <section class="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden mb-10">
+                <div class="bg-institucional-800 text-white px-6 py-4 border-b-4 border-blue-400">
+                    <h3 class="text-xl font-serif font-bold tracking-wide flex items-center"><span class="text-2xl mr-2">📋</span> GUÍA DE INSTRUMENTOS POR GRADO</h3>
+                </div>
+                <div class="p-6 bg-white grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- K-1 -->
+                    <div class="bg-gray-50 rounded-xl p-5 border border-gray-200 shadow-sm border-t-4 border-t-blue-500 flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-lg text-institucional-900 mb-1">Kinder y 1° Grado</h4>
+                            <p class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-4">Etapa de Decodificación</p>
+                            <p class="text-sm font-semibold text-gray-800 mb-1">Instrumento Recomendado:</p>
+                            <p class="text-sm text-gray-600 mb-4 bg-white p-2 rounded border border-gray-100">Lista de Cotejo de Reconocimiento Alfabético y Fonológico.</p>
+                            <div class="space-y-2 mb-4">
+                                <p class="text-sm flex items-start"><span class="text-green-500 text-lg mr-2 leading-none">🟢</span> <span class="text-gray-700"><strong>Verde:</strong> Lee palabras simples de uso frecuente.</span></p>
+                                <p class="text-sm flex items-start"><span class="text-yellow-500 text-lg mr-2 leading-none">🟡</span> <span class="text-gray-700"><strong>Amarillo:</strong> Solo lee sílabas sueltas.</span></p>
+                                <p class="text-sm flex items-start"><span class="text-red-500 text-lg mr-2 leading-none">🔴</span> <span class="text-gray-700"><strong>Rojo:</strong> No reconoce letras ni sonidos.</span></p>
+                            </div>
+                        </div>
+                        <button onclick="imprimirInstrumento(1)" class="w-full bg-blue-100 text-blue-800 font-bold py-2 rounded hover:bg-blue-200 transition-colors shadow-sm mt-4">🖨️ Imprimir Instrumento PDF</button>
+                    </div>
+                    <!-- 2-3 -->
+                    <div class="bg-gray-50 rounded-xl p-5 border border-gray-200 shadow-sm border-t-4 border-t-green-500 flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-lg text-institucional-900 mb-1">2° y 3° Grado</h4>
+                            <p class="text-xs font-bold text-green-600 uppercase tracking-wider mb-4">Fluidez y Comprensión Literal</p>
+                            <p class="text-sm font-semibold text-gray-800 mb-1">Instrumento Recomendado:</p>
+                            <p class="text-sm text-gray-600 mb-4 bg-white p-2 rounded border border-gray-100">Prueba de Fluidez (1 min) + Preguntas de Comprensión Literal.</p>
+                            <div class="space-y-2 mb-4">
+                                <p class="text-sm flex items-start"><span class="text-green-500 text-lg mr-2 leading-none">🟢</span> <span class="text-gray-700"><strong>Verde:</strong> Lee fluido y responde correctamente.</span></p>
+                                <p class="text-sm flex items-start"><span class="text-yellow-500 text-lg mr-2 leading-none">🟡</span> <span class="text-gray-700"><strong>Amarillo:</strong> Lectura silabeada, omite detalles.</span></p>
+                                <p class="text-sm flex items-start"><span class="text-red-500 text-lg mr-2 leading-none">🔴</span> <span class="text-gray-700"><strong>Rojo:</strong> No comprende lo que decodifica.</span></p>
+                            </div>
+                        </div>
+                        <button onclick="imprimirInstrumento(2)" class="w-full bg-green-100 text-green-800 font-bold py-2 rounded hover:bg-green-200 transition-colors shadow-sm mt-4">🖨️ Imprimir Instrumento PDF</button>
+                    </div>
+                    <!-- 4-6 -->
+                    <div class="bg-gray-50 rounded-xl p-5 border border-gray-200 shadow-sm border-t-4 border-t-purple-500 flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-lg text-institucional-900 mb-1">4°, 5° y 6° Grado</h4>
+                            <p class="text-xs font-bold text-purple-600 uppercase tracking-wider mb-4">Comprensión Inferencial y Crítica</p>
+                            <p class="text-sm font-semibold text-gray-800 mb-1">Instrumento Recomendado:</p>
+                            <p class="text-sm text-gray-600 mb-4 bg-white p-2 rounded border border-gray-100">Rúbrica de Comprensión Inferencial y Prosodia.</p>
+                            <div class="space-y-2 mb-4">
+                                <p class="text-sm flex items-start"><span class="text-green-500 text-lg mr-2 leading-none">🟢</span> <span class="text-gray-700"><strong>Verde:</strong> Entonación correcta y argumenta su opinión.</span></p>
+                                <p class="text-sm flex items-start"><span class="text-yellow-500 text-lg mr-2 leading-none">🟡</span> <span class="text-gray-700"><strong>Amarillo:</strong> Lee pero falla en inferencias complejas.</span></p>
+                                <p class="text-sm flex items-start"><span class="text-red-500 text-lg mr-2 leading-none">🔴</span> <span class="text-gray-700"><strong>Rojo:</strong> Dificultad severa en fluidez y análisis.</span></p>
+                            </div>
+                        </div>
+                        <button onclick="imprimirInstrumento(3)" class="w-full bg-purple-100 text-purple-800 font-bold py-2 rounded hover:bg-purple-200 transition-colors shadow-sm mt-4">🖨️ Imprimir Instrumento PDF</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Formulario de Ingreso de Datos (DOCENTES Y DIRECCIÓN) -->
+            <section class="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden mb-10">
+                <div class="bg-gray-100 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h3 class="text-lg font-bold text-institucional-900 flex items-center"><span class="text-xl mr-2">📊</span> REGISTRO DE DATOS Y CONSOLIDADOS</h3>
+                    <button onclick="togglePanelDirectora()" class="text-xs bg-slate-800 text-white px-3 py-2 rounded hover:bg-slate-700 font-bold shadow transition-colors">🔑 Consola Dirección</button>
+                </div>
+                <div class="p-6 md:p-8 bg-white">
+                    <p class="text-sm text-gray-500 mb-6">Docentes: Coloque su PIN personal para Cargar o Guardar datos. Público: Seleccione "Consolidado Total" para ver el avance de la escuela.</p>
+                    
+                    <div class="mb-6">
+                        <label class="block text-sm font-bold text-blue-700 mb-2">Firma / PIN Personal</label>
+                        <input type="password" id="input-pin" onkeyup="verificarRolPin()" class="w-full md:w-1/3 border-2 border-blue-200 rounded-lg p-3 text-lg font-bold text-blue-900 focus:ring-blue-500 bg-blue-50 outline-none placeholder-blue-300" placeholder="Ej. 1234">
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-6">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">Trimestre / Etapa</label>
+                            <select id="select-trimestre" class="w-full border-2 border-gray-300 rounded-lg p-3 text-gray-700 font-semibold focus:ring-blue-500 outline-none">
+                                <option value="Diagnóstico Inicial">Diagnóstico Inicial</option>
+                                <option value="Cierre 1er Trimestre">Cierre 1er Trimestre</option>
+                                <option value="Cierre 2do Trimestre">Cierre 2do Trimestre</option>
+                                <option value="Cierre 3er Trimestre">Cierre 3er Trimestre</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">Grado</label>
+                            <select id="select-grado" onchange="verificarRolPin()" class="w-full border-2 border-gray-300 rounded-lg p-3 text-gray-700 font-semibold focus:ring-blue-500 outline-none">
+                                <option value="Kinder">Kinder</option>
+                                <option value="1° Grado">1° Grado</option>
+                                <option value="2° Grado">2° Grado</option>
+                                <option value="3° Grado">3° Grado</option>
+                                <option value="4° Grado">4° Grado</option>
+                                <option value="5° Grado">5° Grado</option>
+                                <option value="6° Grado">6° Grado</option>
+                                <option value="Todos">Todos los Grados (Total)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">Grupo</label>
+                            <select id="select-grupo" onchange="verificarRolPin()" class="w-full border-2 border-gray-300 rounded-lg p-3 text-gray-700 font-semibold focus:ring-blue-500 outline-none">
+                                <option value="A">Grupo A</option>
+                                <option value="B">Grupo B</option>
+                                <option value="C">Grupo C</option>
+                                <option value="Consolidado">Ver Consolidado Público</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <div>
+                            <label class="block text-sm font-bold text-green-700 mb-2 flex items-center"><span class="w-3 h-3 rounded-full bg-green-500 mr-2"></span>Verde (Avanzado)</label>
+                            <input type="number" id="input-verde" min="0" class="w-full border-2 border-green-200 rounded-lg p-3 text-lg font-bold text-green-800 focus:ring-green-500 bg-white outline-none" placeholder="0">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-yellow-700 mb-2 flex items-center"><span class="w-3 h-3 rounded-full bg-yellow-400 mr-2"></span>Amarillo (En Proceso)</label>
+                            <input type="number" id="input-amarillo" min="0" class="w-full border-2 border-yellow-200 rounded-lg p-3 text-lg font-bold text-yellow-800 focus:ring-yellow-500 bg-white outline-none" placeholder="0">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-red-700 mb-2 flex items-center"><span class="w-3 h-3 rounded-full bg-red-500 mr-2"></span>Rojo (Requiere Apoyo)</label>
+                            <input type="number" id="input-rojo" min="0" class="w-full border-2 border-red-200 rounded-lg p-3 text-lg font-bold text-red-800 focus:ring-red-500 bg-white outline-none" placeholder="0">
+                        </div>
+                    </div>
+                    
+                    <div class="mt-8 flex flex-col md:flex-row justify-end gap-4 border-t border-gray-100 pt-6">
+                        <button onclick="cargarMisDatos()" id="btn-cargar" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:-translate-y-0.5">
+                            📥 Cargar Mis Datos
+                        </button>
+                        <button onclick="guardarDatos()" id="btn-guardar" disabled class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:-translate-y-0.5 opacity-50 cursor-not-allowed">
+                            🚫 PIN Inválido para Grupo
+                        </button>
+                        <button onclick="generarGrafica()" id="btn-generar" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:-translate-y-0.5">
+                            📊 Generar Gráfica
+                        </button>
+                        <button id="btn-ver-graficas" onclick="document.getElementById('seccion-graficas').scrollIntoView({behavior: 'smooth'})" class="hidden bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:-translate-y-0.5">
+                            📊 Ver Gráficas de Lectura
+                        </button>
+                    </div>
+
+                    <!-- BÓVEDA SECRETA DE DIRECCIÓN -->
+                    <div id="panel-directora" class="hidden mt-10 p-6 bg-slate-900 rounded-xl shadow-inner text-white border-4 border-slate-700">
+                        <h4 class="text-2xl font-bold text-blue-300 mb-2">👑 Consola Administrativa - Dirección</h4>
+                        <p class="text-sm text-slate-400 mb-6">Visualiza cualquier consolidado y revisa la auditoría inalterable de la plataforma.</p>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Nivel de Gráfica</label>
+                                <select id="dir-nivel" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white outline-none">
+                                    <option value="Escuela">Total Escuela</option>
+                                    <option value="Grado">Por Grado Completo</option>
+                                    <option value="Grupo">Por Grupo Específico</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Grado (Si aplica)</label>
+                                <select id="dir-grado" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white outline-none">
+                                    <option value="Kinder">Kinder</option><option value="1° Grado">1° Grado</option><option value="2° Grado">2° Grado</option><option value="3° Grado">3° Grado</option><option value="4° Grado">4° Grado</option><option value="5° Grado">5° Grado</option><option value="6° Grado">6° Grado</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 mb-1">Grupo (Si aplica)</label>
+                                <select id="dir-grupo" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white outline-none">
+                                    <option value="A">Grupo A</option><option value="B">Grupo B</option><option value="C">Grupo C</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button onclick="generarGraficaDirectiva()" class="w-full bg-blue-500 hover:bg-blue-400 text-white font-bold py-2 px-4 rounded shadow">📊 Ver Gráfica Directiva</button>
+                            </div>
+                        </div>
+
+                        <div class="border-t border-slate-700 pt-6 mt-2 flex flex-wrap gap-3">
+                            <button onclick="verAuditoria()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-6 rounded shadow text-sm">🕵️ Ver Auditoría de Actividad (Nube)</button>
+                            <button onclick="generarPinesMaestros()" class="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-6 rounded shadow text-sm">🔑 Generar Llaves Maestros</button>
+                            <button onclick="generarPinesEspeciales()" class="bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-2 px-6 rounded shadow text-sm">👁️ Generar Llaves Especiales</button>
+                            <button onclick="borrarBaseDatos()" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-6 rounded shadow text-sm">🗑️ Borrar Base de Datos</button>
+                            <div id="resultado-auditoria" class="bg-black p-4 rounded text-xs font-mono text-green-400 h-48 overflow-y-auto hidden w-full mt-2">
+                                Esperando solicitud...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Dashboard de Resultados -->
+            <section id="dashboard-resultados" class="hidden bg-white rounded-xl shadow-lg border-2 border-blue-100 overflow-hidden mb-12">
+                <div class="bg-institucional-50 px-6 py-4 flex flex-col md:flex-row justify-between items-center border-b border-institucional-100">
+                    <h3 class="text-xl font-serif font-bold text-institucional-900 mb-3 md:mb-0">DASHBOARD DE RESULTADOS</h3>
+                    <button onclick="imprimirReporte()" class="bg-institucional-800 hover:bg-institucional-900 text-white font-semibold py-2 px-5 rounded-lg shadow transition-colors text-sm flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2-2v4h10z"></path></svg>
+                        Imprimir / Guardar PDF
+                    </button>
+                </div>
+                
+                <div id="area-impresion-reporte" class="p-6 md:p-10 bg-white">
+                    <div class="text-center mb-8 border-b-2 border-dashed border-gray-200 pb-6">
+                        <h2 class="text-3xl font-black text-institucional-900 uppercase tracking-widest" id="reporte-grado">Grado</h2>
+                        <p class="text-gray-500 font-semibold mt-1 uppercase tracking-widest text-sm">Estado actual: Semáforo Lector</p>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+                        <!-- Gráfico -->
+                        <div class="w-full h-72 md:h-80 relative flex justify-center items-center bg-gray-50 rounded-xl p-4 border border-gray-100">
+                            <canvas id="chartSemaforo"></canvas>
+                        </div>
+                        
+                        <!-- Tarjetas de Datos -->
+                        <div class="space-y-4">
+                            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 flex justify-between items-center shadow-md">
+                                <span class="font-bold text-white text-lg uppercase tracking-wider">Total Evaluados</span>
+                                <span class="text-3xl font-black text-blue-300" id="reporte-total">0</span>
+                            </div>
+                            <div class="bg-green-50 p-5 rounded-xl border-2 border-green-200 flex justify-between items-center shadow-sm">
+                                <div class="flex items-center">
+                                    <span class="w-6 h-6 rounded-full bg-green-500 mr-3 shadow-sm"></span>
+                                    <div>
+                                        <p class="font-bold text-green-900 text-lg leading-tight">Nivel Verde</p>
+                                        <p class="text-xs font-semibold text-green-700 uppercase tracking-wider">Avanzado / Fluido</p>
+                                    </div>
+                                </div>
+                                <span class="text-3xl font-black text-green-700" id="reporte-verde">0</span>
+                            </div>
+                            <div class="bg-yellow-50 p-5 rounded-xl border-2 border-yellow-200 flex justify-between items-center shadow-sm">
+                                <div class="flex items-center">
+                                    <span class="w-6 h-6 rounded-full bg-yellow-400 mr-3 shadow-sm"></span>
+                                    <div>
+                                        <p class="font-bold text-yellow-900 text-lg leading-tight">Nivel Amarillo</p>
+                                        <p class="text-xs font-semibold text-yellow-700 uppercase tracking-wider">En Proceso / Silabeo</p>
+                                    </div>
+                                </div>
+                                <span class="text-3xl font-black text-yellow-700" id="reporte-amarillo">0</span>
+                            </div>
+                            <div class="bg-red-50 p-5 rounded-xl border-2 border-red-200 flex justify-between items-center shadow-sm">
+                                <div class="flex items-center">
+                                    <span class="w-6 h-6 rounded-full bg-red-500 mr-3 shadow-sm"></span>
+                                    <div>
+                                        <p class="font-bold text-red-900 text-lg leading-tight">Nivel Rojo</p>
+                                        <p class="text-xs font-semibold text-red-700 uppercase tracking-wider">Requiere Apoyo Inmediato</p>
+                                    </div>
+                                </div>
+                                <span class="text-3xl font-black text-red-700" id="reporte-rojo">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="historico-progresion" class="mt-12 border-t-2 border-dashed border-gray-200 pt-8 hidden">
+                        <h3 class="text-xl font-black text-institucional-900 text-center mb-6 uppercase tracking-widest">Línea de Tiempo - Progresión Anual</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200 text-center flex flex-col items-center justify-between shadow-sm">
+                                <h4 class="text-xs font-bold text-gray-600 mb-2 uppercase">Diagnóstico Inicial</h4>
+                                <div class="relative h-24 w-full flex justify-center items-center">
+                                    <canvas id="chartProgInicial"></canvas>
+                                </div>
+                                <p id="textProgInicial" class="text-xs text-gray-500 mt-2 font-semibold">Sin datos</p>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200 text-center flex flex-col items-center justify-between shadow-sm">
+                                <h4 class="text-xs font-bold text-gray-600 mb-2 uppercase">1er Trimestre</h4>
+                                <div class="relative h-24 w-full flex justify-center items-center">
+                                    <canvas id="chartProgT1"></canvas>
+                                </div>
+                                <p id="textProgT1" class="text-xs text-gray-500 mt-2 font-semibold">Sin datos</p>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200 text-center flex flex-col items-center justify-between shadow-sm">
+                                <h4 class="text-xs font-bold text-gray-600 mb-2 uppercase">2do Trimestre</h4>
+                                <div class="relative h-24 w-full flex justify-center items-center">
+                                    <canvas id="chartProgT2"></canvas>
+                                </div>
+                                <p id="textProgT2" class="text-xs text-gray-500 mt-2 font-semibold">Sin datos</p>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200 text-center flex flex-col items-center justify-between shadow-sm">
+                                <h4 class="text-xs font-bold text-gray-600 mb-2 uppercase">3er Trimestre</h4>
+                                <div class="relative h-24 w-full flex justify-center items-center">
+                                    <canvas id="chartProgT3"></canvas>
+                                </div>
+                                <p id="textProgT3" class="text-xs text-gray-500 mt-2 font-semibold">Sin datos</p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- PESTAÑA 3: PROGRAMA DE SESIONES (ANEXO) -->
         <!-- ========================================== -->
         <div id="tab-programa" class="hidden animate-fade-in">
             
